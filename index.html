@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lender Dashboard</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#0077cc" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f0f2f5;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background-color: #0077cc;
+      color: white;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 1.5rem;
+    }
+    header a {
+      color: white;
+      font-size: 0.9rem;
+      text-decoration: underline;
+    }
+    main {
+      padding: 16px;
+      max-width: 1000px;
+      margin: auto;
+    }
+    .chart-container {
+      margin: 20px 0;
+      background: #fff;
+      padding: 16px;
+      border-radius: 12px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+    .download-btn {
+      margin-bottom: 16px;
+      background-color: #0077cc;
+      color: white;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .lender-card {
+      background-color: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      margin: 12px 0;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+    .overdue {
+      border-left: 8px solid #f44336;
+      background-color: #fff5f5;
+    }
+    .lender-header {
+      font-weight: bold;
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+    }
+    .lender-info {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.95rem;
+    }
+    .lender-info div {
+      flex: 1 1 45%;
+      background: #f9fafb;
+      padding: 8px;
+      border-radius: 6px;
+    }
+    .action-buttons {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+    }
+    .action-buttons button {
+      padding: 6px 10px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .clear-btn {
+      background-color: #4caf50;
+      color: white;
+    }
+    .history-btn {
+      background-color: #888;
+      color: white;
+    }
+    @media (max-width: 600px) {
+      .lender-info div {
+        flex: 1 1 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <span>Lender Dashboard</span>
+    <a href="upload.html">Go to Upload Page</a>
+  </header>
+  <main>
+    <div class="chart-container">
+      <canvas id="statusChart"></canvas>
+    </div>
+    <button class="download-btn" onclick="downloadLenders()">Download Data</button>
+    <section id="lenderList"></section>
+  </main>
+  <script>
+    let db;
+    const request = indexedDB.open("LenderDB", 2);
+
+    request.onupgradeneeded = e => {
+      db = e.target.result;
+      if (!db.objectStoreNames.contains("lenders")) {
+        db.createObjectStore("lenders", { keyPath: "id", autoIncrement: true });
+      }
+      if (!db.objectStoreNames.contains("history")) {
+        db.createObjectStore("history", { keyPath: "hid", autoIncrement: true });
+      }
+    };
+
+    request.onsuccess = e => {
+      db = e.target.result;
+      displayLenders();
+      renderStatusChart();
+    };
+
+    request.onerror = e => {
+      console.error("IndexedDB error:", e.target.error);
+    };
+
+    function displayLenders() {
+      const transaction = db.transaction("lenders", "readonly");
+      const store = transaction.objectStore("lenders");
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const lenders = request.result;
+        const container = document.getElementById("lenderList");
+        container.innerHTML = "";
+
+        const today = new Date();
+        let overdueFound = false;
+
+        lenders.sort((a, b) => a.status === "not-cleared" ? -1 : 1);
+
+        lenders.forEach(lender => {
+          const loanDate = new Date(lender.date);
+          const durationDays = Math.floor((today - loanDate) / (1000 * 60 * 60 * 24));
+          const overdue = lender.status === "not-cleared" && durationDays > (lender.weeks * 7);
+          if (overdue) overdueFound = true;
+
+          const card = document.createElement("div");
+          card.className = "lender-card" + (overdue ? " overdue" : "");
+          card.contentEditable = false;
+          card.innerHTML = `
+            <div class="lender-header">${lender.name} (${lender.phone})</div>
+            <div class="lender-info">
+              <div><strong>Date:</strong> ${lender.date}</div>
+              <div><strong>Days Since:</strong> ${durationDays} days</div>
+              <div><strong>Amount:</strong> K${lender.amount}</div>
+              <div><strong>Interest:</strong> K${lender.interest}</div>
+              <div><strong>Total:</strong> K${lender.total}</div>
+              <div><strong>Weeks:</strong> ${lender.weeks}</div>
+              <div><strong>Collateral:</strong> ${lender.collateral}</div>
+              <div><strong>Status:</strong> ${lender.status}</div>
+            </div>
+            <div class="action-buttons">
+              <button class="clear-btn" onclick="clearLoan(${lender.id})">Clear</button>
+              <button class="history-btn" onclick="viewHistory(${lender.id})">History</button>
+            </div>
+          `;
+          container.appendChild(card);
+        });
+
+        if (overdueFound && Notification.permission === "granted") {
+          navigator.serviceWorker.ready.then(registration => {
+            registration.showNotification("Loan Reminder", {
+              body: "Some loans are overdue!",
+              icon: "icons/icon-192.png"
+            });
+          });
+        }
+      };
+    }
+
+    function renderStatusChart() {
+      const transaction = db.transaction("lenders", "readonly");
+      const store = transaction.objectStore("lenders");
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const lenders = request.result;
+        const cleared = lenders.filter(l => l.status === "cleared").length;
+        const notCleared = lenders.filter(l => l.status === "not-cleared").length;
+
+        new Chart(document.getElementById("statusChart"), {
+          type: "doughnut",
+          data: {
+            labels: ["Cleared", "Not Cleared"],
+            datasets: [{
+              data: [cleared, notCleared],
+              backgroundColor: ["#4caf50", "#f44336"]
+            }]
+          },
+          options: {
+            plugins: {
+              legend: { position: 'bottom' }
+            }
+          }
+        });
+      };
+    }
+
+    function downloadLenders() {
+      const transaction = db.transaction("lenders", "readonly");
+      const store = transaction.objectStore("lenders");
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const data = request.result;
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "lenders.json";
+        a.click();
+
+        URL.revokeObjectURL(url);
+      };
+    }
+
+    function clearLoan(id) {
+      const transaction = db.transaction(["lenders", "history"], "readwrite");
+      const lenderStore = transaction.objectStore("lenders");
+      const historyStore = transaction.objectStore("history");
+      const getRequest = lenderStore.get(id);
+
+      getRequest.onsuccess = () => {
+        const lender = getRequest.result;
+        lender.status = "cleared";
+        lenderStore.put(lender);
+        historyStore.add({ ...lender, clearedAt: new Date().toISOString() });
+        displayLenders();
+        renderStatusChart();
+      };
+    }
+
+    function viewHistory(id) {
+      const transaction = db.transaction("history", "readonly");
+      const historyStore = transaction.objectStore("history");
+      const request = historyStore.getAll();
+
+      request.onsuccess = () => {
+        const entries = request.result.filter(entry => entry.id === id);
+        alert("History:" + entries.map(e => `${e.date} → ${e.status}`).join("\n"));
+      };
+    }
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js').then(reg => {
+        console.log("SW registered", reg);
+        if ('Notification' in window) {
+          Notification.requestPermission().then(permission => {
+            console.log("Notification permission:", permission);
+          });
+        }
+      }).catch(err => console.error("SW registration failed", err));
+    }
+  </script>
+</body>
+</html>

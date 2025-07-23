@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Upload Lender</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f2f4f7;
+      padding: 20px;
+      margin: 0;
+    }
+
+    h2 {
+      color: #0077cc;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    form {
+      background: #ffffff;
+      padding: 25px 20px;
+      border-radius: 14px;
+      box-shadow: 0 3px 15px rgba(0,0,0,0.07);
+      max-width: 500px;
+      margin: auto;
+    }
+
+    input, select {
+      width: 90%;
+      padding: 12px;
+      margin: 10px 0;
+      background-color: white;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 16px;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+      transition: border 0.3s ease;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: #0077cc;
+    }
+
+    button {
+      background-color: #0077cc;
+      color: white;
+      padding: 12px;
+      font-size: 16px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 15px;
+    }
+
+    button:hover {
+      background-color: #005fa3;
+    }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #4caf50;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h2>Upload Lender Info</h2>
+
+  <form id="uploadForm">
+    <input type="text" id="name" placeholder="Customer Name" required />
+    <input type="text" id="phone" placeholder="Phone Number" required />
+    <input type="date" id="date" required />
+    <input type="number" id="amount" placeholder="Amount Collected" required />
+    <select id="percentage">
+      <option value="0.1">10%</option>
+      <option value="0.15">15%</option>
+      <option value="0.35">35%</option>
+       <option value="0.40">40%</option>
+      <option value="0.45">45%</option>
+      <option value="0.50">50%</option>
+         <option value="0.60">60%</option>
+       <option value="0.65">65%</option>
+      <option value="0.70">70%</option>
+      <option value="0.75">75%</option>
+       <option value="0.80">80%</option>
+    </select>
+    
+    <input type="number" id="weeks" placeholder="Number of Weeks" required />
+    <input type="text" id="collateral" placeholder="Collateral Item" required />
+    <button type="submit">Save Lender</button>
+  </form>
+
+  <div class="toast" id="toastMsg">✔️ Lender saved successfully!</div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      let db;
+
+      const request = indexedDB.open("LenderDB", 2); // version bump to trigger upgrade
+
+      request.onupgradeneeded = e => {
+        console.log("onupgradeneeded triggered");
+        db = e.target.result;
+
+        if (!db.objectStoreNames.contains("lenders")) {
+          db.createObjectStore("lenders", { keyPath: "id", autoIncrement: true });
+          console.log("Created 'lenders' store");
+        }
+
+        if (!db.objectStoreNames.contains("history")) {
+          db.createObjectStore("history", { keyPath: "hid", autoIncrement: true });
+          console.log("Created 'history' store");
+        }
+      };
+
+      request.onsuccess = e => {
+        db = e.target.result;
+        console.log("DB opened successfully");
+        document.getElementById("uploadForm").addEventListener("submit", handleFormSubmit);
+      };
+
+      request.onerror = e => {
+        console.error("IndexedDB error:", e.target.error);
+      };
+
+      function showToast(message) {
+        const toast = document.getElementById("toastMsg");
+        toast.textContent = message;
+        toast.style.display = "block";
+        setTimeout(() => {
+          toast.style.display = "none";
+        }, 2000);
+      }
+      showToast(`welcome Mr Mascot`);
+
+      function handleFormSubmit(event) {
+        event.preventDefault();
+
+        const name = document.getElementById("name").value.trim();
+        const phone = document.getElementById("phone").value.trim();
+        const date = document.getElementById("date").value;
+        const amount = parseFloat(document.getElementById("amount").value);
+        const percentage = parseFloat(document.getElementById("percentage").value);
+        const weeks = parseInt(document.getElementById("weeks").value, 10);
+        const collateral = document.getElementById("collateral").value.trim();
+
+        if (!name || !phone || !date || isNaN(amount) || isNaN(percentage) || isNaN(weeks) || !collateral) {
+          alert("Please fill in all fields correctly.");
+          return;
+        }
+
+        const interest = amount * percentage;
+        const total = amount + interest;
+
+        const transaction = db.transaction("lenders", "readwrite");
+        const store = transaction.objectStore("lenders");
+
+        const lenderData = {
+          name,
+          phone,
+          date,
+          amount,
+          interest,
+          total,
+          weeks,
+          collateral,
+          status: "not-cleared"
+        };
+
+        const addRequest = store.add(lenderData);
+
+        addRequest.onsuccess = () => {
+          showToast(`✔️ ${name} has been saved.`);
+          setTimeout(() => {
+            window.location.href = "index.html";
+          }, 2000);
+        };
+
+        addRequest.onerror = e => {
+          alert("Failed to save lender: " + e.target.error);
+        };
+      }
+    });
+  </script>
+</body>
+</html>
