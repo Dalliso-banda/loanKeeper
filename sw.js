@@ -1,3 +1,4 @@
+alert('changes synced')
 const CACHE_NAME = "lender-cache-v1";
 const ASSETS = [
   "/",                // Root
